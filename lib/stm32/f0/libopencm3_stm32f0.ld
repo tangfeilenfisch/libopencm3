@@ -98,8 +98,26 @@ SECTIONS
 	 */
 	/DISCARD/ : { *(.eh_frame) }
 
-	. = ALIGN(4);
+	/* 
 	end = .;
+	*/
+	__heap_size = ORIGIN(ram) + LENGTH(ram) - .;
+	.heap :
+	{
+		. = ALIGN(4);
+		PROVIDE(__heap_start = .);
+		__end__ = .;
+		end = __end__;
+		*(.heap*)
+		. = . + __heap_size;
+		PROVIDE(__heap_max = .);
+	} >ram
+
+	.stack_dummy :
+	{
+		*(.stack)
+	} >ram
+
 }
 
 PROVIDE(_stack = ORIGIN(ram) + LENGTH(ram));

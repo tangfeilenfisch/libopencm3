@@ -20,6 +20,8 @@
 
 #include <libopencm3/cm3/vector.h>
 
+/* load optional platform dependent pre initialization routines */
+#include "../dispatch/prelaunch.c"
 /* load optional platform dependent initialization routines */
 #include "../dispatch/vector_chipset.c"
 /* load the weak symbols for IRQ_HANDLERS */
@@ -59,10 +61,17 @@ vector_table_t vector_table = {
 	}
 };
 
+void WEAK __attribute__ ((naked)) libopencm3_os_spec_init(void)
+{
+}
+
 void WEAK __attribute__ ((naked)) reset_handler(void)
 {
 	volatile unsigned *src, *dest;
 	funcp_t *fp;
+
+	/* might be provided by platform specific prelaunch.c */
+	prelaunch();
 
 	for (src = &_data_loadaddr, dest = &_data;
 		dest < &_edata;
@@ -84,6 +93,9 @@ void WEAK __attribute__ ((naked)) reset_handler(void)
 
 	/* might be provided by platform specific vector.c */
 	pre_main();
+
+	/* might be provided by os specific init */
+	libopencm3_os_spec_init();
 
 	/* Call the application's entry point. */
 	main();

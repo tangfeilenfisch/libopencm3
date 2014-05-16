@@ -143,6 +143,21 @@ static inline bool cm_mask_faults(bool mask)
 	return old;
 }
 
+/*---------------------------------------------------------------------------*/
+/** @brief Cortex M check if in interrupt
+ *
+ * Return value of interrupt program status register.
+ *
+ */
+
+__attribute__((always_inline))
+static inline uint32_t cm_is_in_interrupt(void)
+{
+	register uint32_t result;
+	__asm__ ("MRS %0, IPSR"  : "=r" (result));
+	return result;
+}
+
 /**@}*/
 
 /*===========================================================================*/
@@ -162,9 +177,11 @@ static inline bool __cm_atomic_set(bool *val)
 }
 
 #define __CM_SAVER(state)					\
+do {								\
 	__val = state,						\
 	__save __attribute__((__cleanup__(__cm_atomic_set))) =	\
-	__cm_atomic_set(&__val)
+	__cm_atomic_set(&__val);				\
+} while (0)
 
 #endif /* !defined(__DOXYGEN) */
 
@@ -215,7 +232,9 @@ static inline bool __cm_atomic_set(bool *val)
 #define CM_ATOMIC_BLOCK()
 #else /* defined(__DOXYGEN__) */
 #define CM_ATOMIC_BLOCK()						\
-	for (bool ___CM_SAVER(true), __my = true; __my; __my = false)
+do {									\
+	for (bool ___CM_SAVER(true), __my = true; __my; __my = false);	\
+} while (0)
 #endif /* defined(__DOXYGEN__) */
 
 /*---------------------------------------------------------------------------*/
@@ -273,6 +292,129 @@ static inline bool __cm_atomic_set(bool *val)
 
 /**@}*/
 
+/*===========================================================================*/
+/** @defgroup CM0_thread_support Cortex-M0 context switch support defines
+ *
+ * @brief context switch operation support
+ *
+ * @ingroup CM3_cortex_defines
+ */
+/**@{*/
+#define CM0_EXC_RET_HM_MSP		0xfffffff1
+#define CM0_EXC_RET_TM_MSP		0xfffffff9
+#define CM0_EXC_RET_TM_PSP		0xfffffffd
+static uint32_t cm0_cswitch_retval = CM0_EXC_RET_TM_PSP;
+static uint32_t cm0_psp_default = 0xfffffffc;
 
+__attribute__((always_inline))
+static inline void cm0_switch_context_psp_use(void)
+{
+	register uint32_t saved_msp asm ("r12");
+	register uint32_t tmp asm ("r3");
+	register uint32_t ptr asm ("r0");
+
+	asm volatile(	
+		"ldr %[o_ptr], [%[i_def_psp_value]]\n\t"
+		"mrs %[o_tmp], psp\n\t"
+		"cmp %[i_tmp], %[i_ptr]\n\t"
+		"beq sv_call_handler_context_exit\n\t"
+		/* outputs */
+		: [o_tmp] "=r" (tmp), [o_ptr] "=r" (ptr)
+		/* inputs */
+		: [i_tmp] "r" (tmp), [i_ptr] "r" (ptr) 
+		, [i_def_psp_value] "r" (&cm0_psp_default)
+		/* clobbers */
+		: "memory","r7","r6","r5","r4"
+	);
+	asm volatile(	
+  		".extern  active_thread\n\t"
+		/* save main stack pointer, load msp with psp value */
+		"mrs %[o_saved_msp], msp\n\t"
+		"mrs %[o_tmp], psp\n\t"
+		"msr msp, %[i_tmp]\n\t"
+		"isb\n\t"
+
+		/* save registers r4 .. r7 */
+		"push {r4-r7}\n\t"
+
+		/* save process stack pointer */
+		"mrs %[o_tmp], msp\n\t" 
+		"ldr %[o_ptr], =active_thread\n\t"
+		"ldr %[o_ptr], [%[i_ptr]]\n\t"
+		"str %[i_tmp], [%[i_ptr]]\n\t" 
+
+		/* restore main stack pointer */
+		"msr msp, %[i_saved_msp]\n\t"
+		"isb\n\t"
+		/* outputs */
+		: [o_tmp] "=r" (tmp), [o_ptr] "=r" (ptr), [o_saved_msp] "=r" (saved_msp)
+		/* inputs */
+		: [i_tmp] "r" (tmp), [i_ptr] "r" (ptr), [i_saved_msp] "r" (saved_msp)
+		/* clobbers */
+		: "memory","r7","r6","r5","r4"
+	);
+	asm volatile(	
+		"sv_call_handler_context_exit:\n\t"
+		//"push {r0-r3}\n\t"
+		"bl sched_run\n\t"
+		//"pop {r0-r3}\n\t"
+		/* outputs */
+		:
+		/* inputs */
+		:
+		/* clobbers */
+		: "memory","r7","r6","r5","r4"
+	);
+	asm volatile(	
+  		".extern  active_thread\n\t"
+		/* save main stack pointer */
+		"mrs %[o_saved_msp], msp\n\t" 
+		/* load msp with threads psp value */
+		"ldr %[o_ptr], =active_thread\n\t"
+		"ldr %[o_ptr], [%[i_ptr]]\n\t"
+		"ldr %[o_tmp], [%[i_ptr]]\n\t"
+		"msr msp, %[i_tmp]\n\t"
+		"isb\n\t"
+
+		/* restore registers r4 .. r7 */
+		"pop {r4-r7}\n\t"
+		/* copy msp to psp */
+		"mrs %[o_tmp], msp\n\t"
+		"msr psp, %[i_tmp]\n\t"
+		
+		/* restore main stack pointer */
+		"msr msp, %[i_saved_msp]\n\t"
+		"isb\n\t"
+
+		/* return */
+		"ldr %[o_tmp], [%[i_ret_tm_psp]]\n\t"
+		"bx %[i_tmp]\n\t"
+
+		/* outputs */
+		: [o_tmp] "=r" (tmp), [o_ptr] "=r" (ptr), [o_saved_msp] "=r" (saved_msp)
+		/* inputs */
+		: [i_tmp] "r" (tmp), [i_ptr] "r" (ptr), [i_saved_msp] "r" (saved_msp)
+		, [i_ret_tm_psp] "r" (&cm0_cswitch_retval)
+		/* clobbers */
+		: "memory","r7","r6","r5","r4","cc"
+	);
+}
+
+__attribute__((always_inline))
+static inline void cm0_switch_to_msp(void)
+{
+	asm("movs r0, #0");
+	asm("msr control, r0");
+	asm("isb");
+}
+
+__attribute__((always_inline))
+static inline void cm0_sign_psp(void)
+{
+	asm volatile("ldr r0, [%0]" : : "r"(&cm0_psp_default));
+	asm("msr psp, r0");
+}
+
+/**@}*/
 
 #endif
