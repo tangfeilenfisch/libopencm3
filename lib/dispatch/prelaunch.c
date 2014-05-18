@@ -1,5 +1,5 @@
-#if defined(I_NEED_PRELAUNCH)
-#	include "../family/cpu/prelaunch.c"
+#if defined(NRF51822)
+#	include "../nrf51/nrf51822/prelaunch.c"
 
 #else
 

@@ -44,6 +44,9 @@
 /* Yes, we use the same interrupt table for both LM3S and LM4F */
 #	include <libopencm3/lm3s/nvic.h>
 
+#elif defined(NRF51822)
+#	include <libopencm3/nrf51/nrf51822/nvic.h>
+
 #else
 #	warning"no interrupts defined for chipset; NVIC_IRQ_COUNT = 0"
 
