@@ -13,6 +13,7 @@
  *
  * Copyright (C) 2013 Ben Gamari <bgamari@gmail.com>
  * Copyright (C) 2013 Frantisek Burian <BuFran@seznam.cz>
+ * Copyright (C) 2014 Johann Fischer <j.fischer@fh-bingen.de>
  *
  * This library is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -327,7 +328,7 @@ static inline void cm0_switch_context_psp_use(void)
 		: "memory","r7","r6","r5","r4"
 	);
 	asm volatile(	
-  		".extern  active_thread\n\t"
+  		".extern  sched_active_thread\n\t"
 		/* save main stack pointer, load msp with psp value */
 		"mrs %[o_saved_msp], msp\n\t"
 		"mrs %[o_tmp], psp\n\t"
@@ -339,7 +340,7 @@ static inline void cm0_switch_context_psp_use(void)
 
 		/* save process stack pointer */
 		"mrs %[o_tmp], msp\n\t" 
-		"ldr %[o_ptr], =active_thread\n\t"
+		"ldr %[o_ptr], =sched_active_thread\n\t"
 		"ldr %[o_ptr], [%[i_ptr]]\n\t"
 		"str %[i_tmp], [%[i_ptr]]\n\t" 
 
@@ -366,11 +367,11 @@ static inline void cm0_switch_context_psp_use(void)
 		: "memory","r7","r6","r5","r4"
 	);
 	asm volatile(	
-  		".extern  active_thread\n\t"
+  		".extern  sched_active_thread\n\t"
 		/* save main stack pointer */
 		"mrs %[o_saved_msp], msp\n\t" 
 		/* load msp with threads psp value */
-		"ldr %[o_ptr], =active_thread\n\t"
+		"ldr %[o_ptr], =sched_active_thread\n\t"
 		"ldr %[o_ptr], [%[i_ptr]]\n\t"
 		"ldr %[o_tmp], [%[i_ptr]]\n\t"
 		"msr msp, %[i_tmp]\n\t"
